@@ -28,6 +28,42 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Responsive Table Container */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure content doesn't overflow horizontally on mobile */
+.container {
+    max-width: 100% !important;
+}
+
+@media (min-width: 640px) {
+    .container {
+        max-width: 640px !important;
+    }
+}
+
+@media (min-width: 768px) {
+    .container {
+        max-width: 768px !important;
+    }
+}
+
+@media (min-width: 1024px) {
+    .container {
+        max-width: 1024px !important;
+    }
+}
+
+@media (min-width: 1280px) {
+    .container {
+        max-width: 1280px !important;
+    }
+}
+
 .card-hover {
     transition: all 0.3s ease;
 }
