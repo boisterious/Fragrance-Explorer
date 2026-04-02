@@ -278,17 +278,51 @@ const Explorer = ({ data, onViewDetails }) => {
     const [selectedBrands, setSelectedBrands] = useState([]);
     const [selectedGenders, setSelectedGenders] = useState([]);
     const [selectedPrices, setSelectedPrices] = useState([]);
-    const [minRating, setMinRating] = useState(0);
+    const [selectedLongevity, setSelectedLongevity] = useState([]);
+    const [selectedSillage, setSelectedSillage] = useState([]);
+    const [selectedPerfumers, setSelectedPerfumers] = useState([]);
+    const [selectedAccords, setSelectedAccords] = useState([]);
+    const [selectedNotes, setSelectedNotes] = useState([]);
+    const [sliderVal, setSliderVal] = useState(0); // 0-100 para el slider no lineal
 
     const itemsPerPage = 20;
+
+    // Conversión de Slider (0-100) a Rating (0-5) con curva de potencia 3 para expandir el final
+    const minRating = useMemo(() => {
+        const x = sliderVal / 100;
+        return 5 - 5 * Math.pow(1 - x, 3);
+    }, [sliderVal]);
 
     // Generar opciones de filtros
     const filterOptions = useMemo(() => {
         const brands = {}; const genders = {}; const prices = {};
+        const longevity = {}; const sillage = {}; const perfumers = {};
+        const accords = {}; const notes = {};
+
         data.forEach(item => {
             const b = item.marca || "Otros"; brands[b] = (brands[b] || 0) + 1;
             const g = translate('gender', item.genero); genders[g] = (genders[g] || 0) + 1;
             const p = translate('price', item.precio); prices[p] = (prices[p] || 0) + 1;
+            const l = translate('longevity', item.longevidad); longevity[l] = (longevity[l] || 0) + 1;
+            const s = translate('sillage', item.estela); sillage[s] = (sillage[s] || 0) + 1;
+
+            if (item.perfumista) {
+                item.perfumista.split(',').forEach(perf => {
+                    const pName = perf.trim();
+                    if (pName) perfumers[pName] = (perfumers[pName] || 0) + 1;
+                });
+            }
+            if (item.main_accords) {
+                item.main_accords.split(',').forEach(a => {
+                    const acc = translateText(a.trim());
+                    accords[acc] = (accords[acc] || 0) + 1;
+                });
+            }
+            const allNotes = translateText([item.notas_salida, item.notas_corazon, item.notas_fondo].filter(Boolean).join(', '));
+            allNotes.split(',').forEach(n => {
+                const note = n.trim();
+                if (note.length > 2) notes[note] = (notes[note] || 0) + 1;
+            });
         });
 
         const toOpts = (obj, order) => Object.entries(obj)
@@ -298,7 +332,12 @@ const Explorer = ({ data, onViewDetails }) => {
         return {
             brands: toOpts(brands),
             genders: toOpts(genders),
-            prices: toOpts(prices, PRICE_ORDER)
+            prices: toOpts(prices, PRICE_ORDER),
+            longevity: toOpts(longevity, LONGEVITY_ORDER),
+            sillage: toOpts(sillage, SILLAGE_ORDER),
+            perfumers: toOpts(perfumers).slice(0, 100),
+            accords: toOpts(accords).slice(0, 100),
+            notes: toOpts(notes).slice(0, 200)
         };
     }, [data]);
 
@@ -308,16 +347,37 @@ const Explorer = ({ data, onViewDetails }) => {
             const matchesSearch = !searchTerm || (
                 normalizeText(item.nombre_completo).includes(nSearch) ||
                 normalizeText(item.marca).includes(nSearch) ||
-                normalizeText(item.main_accords).includes(nSearch)
+                normalizeText(item.main_accords).includes(nSearch) ||
+                normalizeText(item.perfumista).includes(nSearch)
             );
             const matchesBrand = selectedBrands.length === 0 || selectedBrands.includes(item.marca);
             const matchesGender = selectedGenders.length === 0 || selectedGenders.includes(translate('gender', item.genero));
             const matchesPrice = selectedPrices.length === 0 || selectedPrices.includes(translate('price', item.precio));
+            const matchesLongevity = selectedLongevity.length === 0 || selectedLongevity.includes(translate('longevity', item.longevidad));
+            const matchesSillage = selectedSillage.length === 0 || selectedSillage.includes(translate('sillage', item.estela));
             const matchesRating = (item.rating || 0) >= minRating;
 
-            return matchesSearch && matchesBrand && matchesGender && matchesPrice && matchesRating;
+            let matchesPerfumer = true;
+            if (selectedPerfumers.length > 0) {
+                const itemPerfumers = String(item.perfumista || "").split(',').map(p => p.trim());
+                matchesPerfumer = selectedPerfumers.some(p => itemPerfumers.includes(p));
+            }
+
+            let matchesAccords = true;
+            if (selectedAccords.length > 0) {
+                const itemAccords = String(item.main_accords || "").split(',').map(a => translateText(a.trim()));
+                matchesAccords = selectedAccords.some(acc => itemAccords.includes(acc));
+            }
+
+            let matchesNotes = true;
+            if (selectedNotes.length > 0) {
+                const itemNotes = translateText([item.notas_salida, item.notas_corazon, item.notas_fondo].join(', '));
+                matchesNotes = selectedNotes.some(note => itemNotes.includes(note));
+            }
+
+            return matchesSearch && matchesBrand && matchesGender && matchesPrice && matchesLongevity && matchesSillage && matchesRating && matchesPerfumer && matchesAccords && matchesNotes;
         });
-    }, [data, searchTerm, selectedBrands, selectedGenders, selectedPrices, minRating]);
+    }, [data, searchTerm, selectedBrands, selectedGenders, selectedPrices, selectedLongevity, selectedSillage, minRating, selectedPerfumers, selectedAccords, selectedNotes]);
 
     const paginatedData = useMemo(() => {
         const start = (page - 1) * itemsPerPage;
@@ -329,6 +389,13 @@ const Explorer = ({ data, onViewDetails }) => {
     const toggleFilter = (setter, value) => {
         setter(prev => prev.includes(value) ? prev.filter(i => i !== value) : [...prev, value]);
         setPage(1);
+    };
+
+    const clearFilters = () => {
+        setSelectedBrands([]); setSelectedGenders([]); setSelectedPrices([]); 
+        setSelectedLongevity([]); setSelectedSillage([]); setSelectedPerfumers([]);
+        setSelectedAccords([]); setSelectedNotes([]);
+        setSliderVal(0); setPage(1);
     };
 
     return (
@@ -345,16 +412,14 @@ const Explorer = ({ data, onViewDetails }) => {
                 <div className="glass-panel p-6 rounded-2xl h-full overflow-y-auto custom-scrollbar border border-white/5">
                     <div className="flex items-center justify-between mb-8">
                         <h3 className="text-sm font-black tracking-widest text-indigo-400">FILTRAR POR</h3>
-                        {(selectedBrands.length + selectedGenders.length + selectedPrices.length + (minRating > 0 ? 1 : 0)) > 0 && (
-                            <button onClick={() => { setSelectedBrands([]); setSelectedGenders([]); setSelectedPrices([]); setMinRating(0); }} className="text-[10px] text-slate-500 hover:text-white underline">Limpiar</button>
-                        )}
+                        <button onClick={clearFilters} className="text-[10px] text-slate-500 hover:text-white underline">Limpiar</button>
                     </div>
 
                     <FilterSection title="Rating Mínimo">
-                        <input type="range" min="0" max="5" step="0.5" value={minRating} onChange={e => setMinRating(parseFloat(e.target.value))} className="w-full accent-indigo-500 mb-2" />
+                        <input type="range" min="0" max="100" step="1" value={sliderVal} onChange={e => setSliderVal(parseInt(e.target.value))} className="w-full accent-indigo-500 mb-2" />
                         <div className="flex justify-between text-[10px] text-slate-500 font-mono">
                             <span>0.0</span>
-                            <span className="text-indigo-400 font-bold">{minRating.toFixed(1)} ★</span>
+                            <span className="text-indigo-400 font-bold">{minRating.toFixed(2)} ★</span>
                             <span>5.0</span>
                         </div>
                     </FilterSection>
@@ -367,8 +432,28 @@ const Explorer = ({ data, onViewDetails }) => {
                         <CheckboxList options={filterOptions.prices} selected={selectedPrices} onChange={v => toggleFilter(setSelectedPrices, v)} />
                     </FilterSection>
 
+                    <FilterSection title="Duración">
+                        <CheckboxList options={filterOptions.longevity} selected={selectedLongevity} onChange={v => toggleFilter(setSelectedLongevity, v)} />
+                    </FilterSection>
+
+                    <FilterSection title="Estela">
+                        <CheckboxList options={filterOptions.sillage} selected={selectedSillage} onChange={v => toggleFilter(setSelectedSillage, v)} />
+                    </FilterSection>
+
                     <FilterSection title="Marca" isOpen={false}>
                         <CheckboxList options={filterOptions.brands} selected={selectedBrands} onChange={v => toggleFilter(setSelectedBrands, v)} search={true} />
+                    </FilterSection>
+
+                    <FilterSection title="Perfumista" isOpen={false}>
+                        <CheckboxList options={filterOptions.perfumers} selected={selectedPerfumers} onChange={v => toggleFilter(setSelectedPerfumers, v)} search={true} />
+                    </FilterSection>
+
+                    <FilterSection title="Acordes" isOpen={false}>
+                        <CheckboxList options={filterOptions.accords} selected={selectedAccords} onChange={v => toggleFilter(setSelectedAccords, v)} search={true} />
+                    </FilterSection>
+
+                    <FilterSection title="Notas" isOpen={false}>
+                        <CheckboxList options={filterOptions.notes} selected={selectedNotes} onChange={v => toggleFilter(setSelectedNotes, v)} search={true} />
                     </FilterSection>
                 </div>
             </aside>
