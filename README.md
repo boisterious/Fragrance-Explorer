@@ -34,6 +34,9 @@ npm install
 
 Simplemente abre el archivo `index.html` en tu navegador web favorito. La aplicación funciona completamente del lado del cliente sin necesidad de servidor.
 
+## TEST
+https://boisterious.github.io/Fragrance-Explorer/
+
 ## Licencia
 
 MIT
