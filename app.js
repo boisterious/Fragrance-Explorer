@@ -283,7 +283,11 @@ const Explorer = ({ data, onViewDetails }) => {
     const [selectedPerfumers, setSelectedPerfumers] = useState([]);
     const [selectedAccords, setSelectedAccords] = useState([]);
     const [selectedNotes, setSelectedNotes] = useState([]);
-    const [sliderVal, setSliderVal] = useState(0); // 0-100 para el slider no lineal
+    const [sliderVal, setSliderVal] = useState(0);
+
+    // Estado de Ordenación
+    const [sortBy, setSortBy] = useState('rating');
+    const [sortOrder, setSortOrder] = useState('desc');
 
     const itemsPerPage = 20;
 
@@ -379,12 +383,44 @@ const Explorer = ({ data, onViewDetails }) => {
         });
     }, [data, searchTerm, selectedBrands, selectedGenders, selectedPrices, selectedLongevity, selectedSillage, minRating, selectedPerfumers, selectedAccords, selectedNotes]);
 
+    const sortedData = useMemo(() => {
+        let res = [...filteredData];
+        res.sort((a, b) => {
+            let valA, valB;
+            if (sortBy === 'rating') {
+                valA = a.rating || 0;
+                valB = b.rating || 0;
+            } else if (sortBy === 'votes') {
+                valA = a.num_votos || 0;
+                valB = b.num_votos || 0;
+            } else if (sortBy === 'price_val') {
+                const priceMap = { "way overpriced": 1, "overpriced": 2, "ok": 3, "good value": 4, "great value": 5 };
+                valA = priceMap[String(a.precio).toLowerCase()] || 0;
+                valB = priceMap[String(b.precio).toLowerCase()] || 0;
+            } else if (sortBy === 'name') {
+                valA = (a.nombre_completo || "").toLowerCase();
+                valB = (b.nombre_completo || "").toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            } else if (sortBy === 'brand') {
+                valA = (a.marca || "").toLowerCase();
+                valB = (b.marca || "").toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            }
+            return sortOrder === 'asc' ? valA - valB : valB - valA;
+        });
+        return res;
+    }, [filteredData, sortBy, sortOrder]);
+
     const paginatedData = useMemo(() => {
         const start = (page - 1) * itemsPerPage;
-        return filteredData.slice(start, start + itemsPerPage);
-    }, [filteredData, page]);
+        return sortedData.slice(start, start + itemsPerPage);
+    }, [sortedData, page]);
 
-    const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+    const totalPages = Math.ceil(sortedData.length / itemsPerPage);
 
     const toggleFilter = (setter, value) => {
         setter(prev => prev.includes(value) ? prev.filter(i => i !== value) : [...prev, value]);
@@ -397,6 +433,28 @@ const Explorer = ({ data, onViewDetails }) => {
         setSelectedAccords([]); setSelectedNotes([]);
         setSliderVal(0); setPage(1);
     };
+
+    const toggleSort = (key) => {
+        if (sortBy === key) {
+            setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+        } else {
+            setSortBy(key);
+            setSortOrder('desc');
+        }
+    };
+
+    const SortHeader = ({ label, sortKey, className = "" }) => (
+        <th className={`p-5 text-[10px] font-black text-slate-500 tracking-widest uppercase cursor-pointer hover:text-indigo-400 hover:bg-slate-800/50 transition-colors ${className}`} onClick={() => toggleSort(sortKey)}>
+            <div className={`flex items-center gap-1 ${className.includes('text-center') ? 'justify-center' : ''}`}>
+                {label}
+                {sortBy === sortKey ? (
+                    <Icon name={sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} className="text-indigo-400" />
+                ) : (
+                    <Icon name="chevrons-up-down" size={12} className="opacity-0 group-hover:opacity-50" />
+                )}
+            </div>
+        </th>
+    );
 
     return (
         <div className="flex flex-col lg:flex-row gap-8 animate-fade-in lg:h-[calc(100vh-160px)]">
@@ -460,7 +518,7 @@ const Explorer = ({ data, onViewDetails }) => {
 
             {/* Contenido Principal */}
             <div className="flex-1 flex flex-col min-w-0">
-                <div className="flex gap-3 mb-6">
+                <div className="flex flex-col sm:flex-row gap-3 mb-6">
                     <div className="relative flex-1 group">
                         <Icon name="search" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
                         <input
@@ -471,19 +529,38 @@ const Explorer = ({ data, onViewDetails }) => {
                             onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
                         />
                     </div>
-                    <button onClick={() => setShowFilters(true)} className="lg:hidden p-4 bg-indigo-500 text-white rounded-2xl shadow-lg shadow-indigo-500/20"><Icon name="filter" size={20} /></button>
+                    <div className="flex gap-2">
+                        <div className="relative group lg:hidden flex-1 sm:flex-none">
+                            <select
+                                className="w-full h-full appearance-none bg-slate-800/50 border border-slate-700/50 rounded-2xl px-4 py-4 pr-10 text-xs font-bold text-slate-300 focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
+                                value={`${sortBy}-${sortOrder}`}
+                                onChange={(e) => {
+                                    const [b, o] = e.target.value.split('-');
+                                    setSortBy(b); setSortOrder(o);
+                                }}
+                            >
+                                <option value="rating-desc">Mejor Valoradas</option>
+                                <option value="votes-desc">Más Populares</option>
+                                <option value="price_val-desc">Mejor Precio</option>
+                                <option value="name-asc">Nombre (A-Z)</option>
+                                <option value="brand-asc">Marca (A-Z)</option>
+                            </select>
+                            <Icon name="chevron-down" size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                        </div>
+                        <button onClick={() => setShowFilters(true)} className="lg:hidden px-4 py-4 bg-indigo-500 text-white rounded-2xl shadow-lg shadow-indigo-500/20"><Icon name="filter" size={20} /></button>
+                    </div>
                 </div>
 
                 <div className="glass-panel rounded-3xl flex-1 flex flex-col overflow-hidden border border-white/5 shadow-2xl">
                     <div className="table-responsive flex-1 custom-scrollbar">
                         <table className="w-full text-left min-w-[700px]">
-                            <thead className="bg-slate-800/80 backdrop-blur sticky top-0 z-20">
-                                <tr>
-                                    <th className="p-5 text-[10px] font-black text-slate-500 tracking-widest uppercase">Fragancia</th>
-                                    <th className="p-5 text-[10px] font-black text-slate-500 tracking-widest uppercase">Marca</th>
+                            <thead className="bg-slate-800/80 backdrop-blur sticky top-0 z-20 select-none">
+                                <tr className="group">
+                                    <SortHeader label="Fragancia" sortKey="name" />
+                                    <SortHeader label="Marca" sortKey="brand" />
                                     <th className="p-5 text-[10px] font-black text-slate-500 tracking-widest uppercase hidden sm:table-cell text-center">Género</th>
-                                    <th className="p-5 text-[10px] font-black text-slate-500 tracking-widest uppercase">Valoración</th>
-                                    <th className="p-5 text-[10px] font-black text-slate-500 tracking-widest uppercase">Precio</th>
+                                    <SortHeader label="Valoración" sortKey="rating" />
+                                    <SortHeader label="Precio" sortKey="price_val" />
                                     <th className="p-5 w-20"></th>
                                 </tr>
                             </thead>
@@ -556,67 +633,69 @@ const DetailModal = ({ item, onClose }) => {
     if (!item) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-fade-in" onClick={onClose}>
-            <div className="bg-slate-900 border border-white/10 w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-[2.5rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] custom-scrollbar" onClick={e => e.stopPropagation()}>
-                <div className="sticky top-0 bg-slate-900/90 backdrop-blur-md border-b border-white/5 p-6 sm:p-10 flex justify-between items-start z-10">
-                    <div className="min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-fade-in" onClick={onClose}>
+            <div className="bg-slate-900 border border-white/10 w-full max-w-5xl max-h-[95vh] flex flex-col rounded-3xl sm:rounded-[2.5rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden" onClick={e => e.stopPropagation()}>
+                {/* Header fijo para que no se desplace */}
+                <div className="flex-shrink-0 bg-slate-900/90 backdrop-blur-md border-b border-white/5 p-5 sm:p-8 flex justify-between items-start z-10">
+                    <div className="min-w-0 pr-4">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
                             <span className="px-3 py-1 bg-indigo-500 text-white text-[10px] font-black uppercase rounded-lg shadow-lg shadow-indigo-500/20">{item.marca}</span>
                             {item.rating > 4.5 && <span className="flex items-center gap-1 text-yellow-500 text-[10px] font-black uppercase tracking-wider"><Icon name="award" size={12} /> TOP RATED</span>}
                         </div>
-                        <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight break-words">{item.nombre_completo}</h2>
+                        <h2 className="text-xl sm:text-3xl lg:text-4xl font-black text-white leading-tight break-words">{item.nombre_completo}</h2>
                     </div>
-                    <button onClick={onClose} className="p-3 bg-slate-800 hover:bg-red-500/20 hover:text-red-400 rounded-2xl transition-all"><Icon name="x" size={24} /></button>
+                    <button onClick={onClose} className="flex-shrink-0 p-3 bg-slate-800 hover:bg-red-500/20 hover:text-red-400 rounded-xl transition-all"><Icon name="x" size={20} /></button>
                 </div>
 
-                <div className="p-6 sm:p-10 space-y-12">
+                {/* Contenido con scroll independiente */}
+                <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-8 sm:space-y-10 custom-scrollbar">
                     {/* Stats Premium */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                         {[
                             { label: 'Valoración', val: item.rating, sub: `${formatNumber(item.num_votos)} votos`, icon: 'star', color: 'yellow' },
                             { label: 'Duración', val: translate('longevity', item.longevidad), pct: item.longevidad_pct, icon: 'clock', color: 'indigo' },
                             { label: 'Estela', val: translate('sillage', item.estela), pct: item.estela_pct, icon: 'wind', color: 'pink' },
                             { label: 'Precio', val: translate('price', item.precio), pct: item.precio_pct, icon: 'dollar-sign', color: 'emerald' }
                         ].map((s, i) => (
-                            <div key={i} className="bg-slate-800/30 border border-white/5 p-6 rounded-3xl group hover:border-indigo-500/30 transition-colors">
-                                <div className={`text-${s.color}-400 mb-4 bg-${s.color}-500/10 w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                                    <Icon name={s.icon} size={20} />
+                            <div key={i} className="bg-slate-800/30 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl group hover:border-indigo-500/30 transition-colors">
+                                <div className={`text-${s.color}-400 mb-3 sm:mb-4 bg-${s.color}-500/10 w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                                    <Icon name={s.icon} size={18} />
                                 </div>
-                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{s.label}</div>
-                                <div className="text-lg font-black text-white mb-2">{s.val}</div>
+                                <div className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{s.label}</div>
+                                <div className="text-base sm:text-lg font-black text-white mb-2 truncate">{s.val}</div>
                                 {s.pct !== undefined ? (
                                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                         <div className={`h-full bg-${s.color}-500 transition-all duration-1000 delay-300`} style={{ width: `${s.pct * 100}%` }}></div>
                                     </div>
-                                ) : <div className="text-xs text-slate-500 font-mono">{s.sub}</div>}
+                                ) : <div className="text-xs text-slate-500 font-mono truncate">{s.sub}</div>}
                             </div>
                         ))}
                     </div>
 
                     {/* Pirámide Olfativa */}
-                    <div className="grid lg:grid-cols-3 gap-8">
+                    <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
                         {[
                             { title: 'Notas de Salida', text: item.notas_salida, color: 'indigo', icon: 'zap' },
                             { title: 'Notas de Corazón', text: item.notas_corazon, color: 'pink', icon: 'heart' },
                             { title: 'Notas de Fondo', text: item.notas_fondo, color: 'amber', icon: 'anchor' }
                         ].map((n, i) => n.text && (
-                            <div key={i} className="relative p-8 rounded-[2rem] bg-slate-800/20 border border-white/5 overflow-hidden group">
-                                <div className={`absolute top-0 right-0 w-32 h-32 bg-${n.color}-500/5 -mr-16 -mt-16 rounded-full blur-3xl group-hover:bg-${n.color}-500/10 transition-colors`}></div>
-                                <div className={`flex items-center gap-3 mb-6 text-${n.color}-400`}>
-                                    <Icon name={n.icon} size={20} />
-                                    <h4 className="text-xs font-black uppercase tracking-[0.2em]">{n.title}</h4>
+                            <div key={i} className="relative p-5 sm:p-6 rounded-2xl sm:rounded-[2rem] bg-slate-800/20 border border-white/5 overflow-hidden group">
+                                <div className={`absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-${n.color}-500/5 -mr-12 -mt-12 sm:-mr-16 sm:-mt-16 rounded-full blur-2xl sm:blur-3xl group-hover:bg-${n.color}-500/10 transition-colors`}></div>
+                                <div className={`flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 text-${n.color}-400`}>
+                                    <Icon name={n.icon} size={18} />
+                                    <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-[0.2em]">{n.title}</h4>
                                 </div>
-                                <p className="text-slate-300 text-sm leading-relaxed relative z-10">{translateText(n.text)}</p>
+                                <p className="text-slate-300 text-xs sm:text-sm leading-relaxed relative z-10">{translateText(n.text)}</p>
                             </div>
                         ))}
                     </div>
 
                     {/* Acordes */}
-                    <div className="bg-slate-800/10 p-10 rounded-[2.5rem] border border-white/5">
-                        <h3 className="text-sm font-black text-slate-500 uppercase tracking-[0.3em] mb-8 text-center">Acordes Principales</h3>
-                        <div className="flex flex-wrap justify-center gap-3">
+                    <div className="bg-slate-800/10 p-5 sm:p-8 rounded-2xl sm:rounded-[2.5rem] border border-white/5">
+                        <h3 className="text-xs sm:text-sm font-black text-slate-500 uppercase tracking-[0.3em] mb-6 text-center">Acordes Principales</h3>
+                        <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
                             {String(item.main_accords || "").split(',').map((accord, idx) => (
-                                <span key={idx} className="px-6 py-2 bg-slate-800 border border-white/5 hover:border-indigo-500/50 hover:bg-slate-700 transition-all rounded-full text-xs font-bold text-slate-300">
+                                <span key={idx} className="px-4 py-1.5 sm:px-6 sm:py-2 bg-slate-800 border border-white/5 hover:border-indigo-500/50 hover:bg-slate-700 transition-all rounded-full text-[10px] sm:text-xs font-bold text-slate-300">
                                     {translateText(accord.trim())}
                                 </span>
                             ))}
